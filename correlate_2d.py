@@ -6,6 +6,7 @@ from progressbar import ProgressBar, ETA, Bar, Percentage
 import numpy as np
 import time
 import argparse
+import sys
 # import matplotlib.pyplot as plt
 from multiprocessing import Pool
 # import os
@@ -32,7 +33,12 @@ def define_argument_parser():
     parser.add_argument('-m', '--max_length', help=helptext, default=-1)
 
     helptext = 'Depth layer to correlate. '
-    parser.add_argument('-d', '--depth_layer', help=helptext, default=0)
+    parser.add_argument('-d', '--depth_layer', help=helptext,
+                        type=int, default=0)
+
+    helptext = 'Keep original variable in output file?'
+    parser.add_argument('-k', '--keep_original', help=helptext,
+                        default=False, action='store_true')
 
     args = parser.parse_args()
     return args
@@ -102,9 +108,10 @@ if __name__ == '__main__':
     # Get name of NetCDF output file
     if not args.output_file_name:
         filename_split = filename.split('.')
-        file_out = ''.join(filename_split[0:-1]) + '_corr.' + filename_split[-1]
+        filename_out = ''.join(filename_split[0:-1]) \
+            + '_corr.' + filename_split[-1]
     else:
-        file_out = args.output_file_name
+        filename_out = args.output_file_name
 
     # Load variable to correlate
     variable_name = args.variable
@@ -168,24 +175,51 @@ if __name__ == '__main__':
     # plt.show()
 
     # Save correlated variable into new netCDF file
+    print 'Saving results to %s' % filename_out
+    with netCDF4.Dataset(filename_out, mode='w',
+                         format='NETCDF3_64BIT') as file_out:
 
-    with netCDF4.Dataset(file_out, mode='w') as dst:
+        # Copy all attributes
+        for name, att in file_in.__dict__.iteritems():
+            # Prepend this step to the history attribute
+            if name == 'history':
+                time_str = time.strftime("%a %b %d %X %Y", time.localtime())
+                shell_str = " ".join(sys.argv[:])
+                att = time_str + ': python ' + shell_str + '\n' + att
+            file_out.setncattr(name, att)
 
         for name, dimension in file_in.dimensions.iteritems():
             if not dimension.isunlimited():
-                dst.createDimension(name, len(dimension))
+                file_out.createDimension(name, len(dimension))
             else:
-                dst.createDimension(name, None)
+                file_out.createDimension(name, None)
 
         for name, variable in file_in.variables.iteritems():
-            # do not copy the variable of choice
-            if name == variable_name:
-                x = dst.createVariable(name, variable.datatype,
-                                       variable.dimensions[2:])
-                dst.variables[name][:, :] = corrlen
-            else:
-                x = dst.createVariable(name, variable.datatype,
-                                       variable.dimensions)
-                dst.variables[name][:] = file_in.variables[name][:]
 
-        var_corrlen = dst.createVariable
+            if name == variable_name:
+                # For the variable of choice, create a new one with the
+                # correlation length
+
+                # Keep the original one?
+                if args.keep_original:
+                    x = file_out.createVariable(name, variable.datatype,
+                                                variable.dimensions)
+                    file_out.variables[name][:] = file_in.variables[name][:]
+
+                var_name = variable_name + '_corr'
+                x = file_out.createVariable(var_name, variable.datatype,
+                                            variable.dimensions[2:])
+                file_out.variables[var_name][:, :] = corrlen
+
+            else:
+                x = file_out.createVariable(name, variable.datatype,
+                                            variable.dimensions)
+                file_out.variables[name][:] = file_in.variables[name][:]
+
+            for name_att, att in variable.__dict__.iteritems():
+                if name in file_out.variables:
+                    file_out.variables[name].setncattr(name_att, att)
+
+        var_corrlen = file_out.createVariable
+
+    file_in.close()
