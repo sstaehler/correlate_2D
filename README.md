@@ -1,6 +1,8 @@
 # correlate_2D
 Correlate time series on regular meshes
-''''
+
+```
+
 usage: correlate_2d.py [-h] [-o OUTPUT_FILE_NAME] [-v VARIABLE]
                        [-m MAX_LENGTH] [-d DEPTH_LAYER] [-k]
                        input_file_name
@@ -23,4 +25,5 @@ optional arguments:
   -d DEPTH_LAYER, --depth_layer DEPTH_LAYER
                         Depth layer to correlate. 
   -k, --keep_original   Keep original variable in output file?
-''''
+  
+```
