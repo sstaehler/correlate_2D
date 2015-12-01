@@ -7,7 +7,7 @@ import numpy as np
 import time
 import argparse
 import sys
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from multiprocessing import Pool
 # import os
 
@@ -71,11 +71,9 @@ def conv_small_dist(A, idx_x, idx_y, dx_max, dy_max):
                          latlat[x_min:x_max, y_min:y_max],
                          lonlon[x_min:x_max, y_min:y_max]).flatten()
 
-    # plt.pcolormesh(normvec[x_min:x_max, y_min:y_max])
-    # p = plt.pcolormesh((A[0, x_min:x_max, y_min:y_max]))
-    # plt.colorbar(p)
-    # plt.plot(distances, conv.flatten(), '+')
-    # plt.show()
+    #pc = plt.pcolormesh(conv)
+    #plt.colorbar(pc)
+    #plt.show()
     return conv.flatten()[distances > 0], distances[distances > 0]
 
 
@@ -154,6 +152,8 @@ if __name__ == '__main__':
                Bar(), ' ', ETA()]
     pbar = ProgressBar(widgets=widgets, maxval=nelements).start()
 
+    calc_corr(iel=36548)
+
     # Define pool of parallel workers
     p = Pool()
     result = p.map_async(calc_corr, range(0, nelements), chunksize=1)
@@ -170,9 +170,17 @@ if __name__ == '__main__':
 
     # Save result into 2D variable
     corrlen = np.array(result.get()).reshape(latlat.shape)
-    # pc = plt.pcolormesh(slopes)
-    # plt.colorbar(pc)
-    # plt.show()
+    corrlen[corrlen==0] = -12345
+    cmap = plt.cm.YlGnBu_r
+    cmap.set_under('grey')
+    latd = lats/np.pi*180
+    lond = lons/np.pi*180
+    pc = plt.pcolormesh(lond, latd, corrlen,
+                        cmap=cmap, vmin=0.1, vmax=100.0)
+    plt.xlim(xmin=lond.min(), xmax=lond.max())
+    plt.ylim(ymin=latd.min(), ymax=latd.max())
+    plt.colorbar(pc)
+    plt.savefig('corr_length_%s.png' % (variable_name))
 
     # Save correlated variable into new netCDF file
     print 'Saving results to %s' % filename_out
@@ -208,8 +216,12 @@ if __name__ == '__main__':
 
                 var_name = variable_name + '_corr'
                 x = file_out.createVariable(var_name, variable.datatype,
-                                            variable.dimensions[2:])
-                file_out.variables[var_name][:, :] = corrlen
+                                            variable.dimensions[1:])
+                file_out.variables[var_name][0, :, :] = corrlen
+                file_out.variables[var_name].setncattr('missing_value', -12345.)
+                file_out.variables[var_name].setncattr('units', 'kilometers')
+                longname = 'Correlation length of %s' % variable_name
+                file_out.variables[var_name].setncattr('long_name', longname)
 
             else:
                 x = file_out.createVariable(name, variable.datatype,
